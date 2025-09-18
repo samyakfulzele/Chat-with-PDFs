@@ -3,13 +3,14 @@ from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 import os
 import google.generativeai as genai
 from langchain.prompts import PromptTemplate
 from langchain.chains.question_answering import load_qa_chain
 from htmlTemplates import css, bot_template, user_template
 from langchain.memory import ConversationBufferMemory
+from langchain.embeddings import HuggingFaceEmbeddings
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -32,7 +33,7 @@ def get_text_chunks(raw_text):
     return chunks
 
 def get_vectorstore(text_chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001")
+    embeddings = HuggingFaceEmbeddings()  # free, runs locally
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
@@ -40,7 +41,7 @@ def get_conversational_chain():
     prompt_template = """
     Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
     provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
-    Context:\n {context}?\n
+    Context:\n {context}\n
     Question: \n{question}\n
 
     Answer:
@@ -54,8 +55,13 @@ def get_conversational_chain():
     return chain
 
 def handle_userinput(user_question):
-    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001")
+    embeddings = HuggingFaceEmbeddings()
     
+    if not os.path.exists("faiss_index"):
+        st.warning("Please upload and process PDFs first!")
+        return
+
+
     new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     docs = new_db.similarity_search(user_question)
 
@@ -66,7 +72,10 @@ def handle_userinput(user_question):
         {"input_documents":docs, "question": user_question}
         , return_only_outputs=True)
 
-    st.session_state['chat_history'].append( user_question)
+    if "chat_history" not in st.session_state:
+        st.session_state['chat_history'] = []
+
+    st.session_state['chat_history'].append(user_question)
     st.session_state['chat_history'].append(response['output_text'])
 
     for i, msg in enumerate(st.session_state['chat_history']):
