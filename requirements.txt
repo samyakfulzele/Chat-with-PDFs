@@ -9,3 +9,5 @@ langchain-text-splitters
 langchain
 langchain-core
 pydantic<2.0
+InstructorEmbedding 
+sentence-transformers
